@@ -1,0 +1,129 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated creator profile metadata without sensitive PII.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID matching the document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Public display name shown on created quizzes.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Avatar image URL from Google Auth.",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last update timestamp."
+        }
+      },
+      "required": ["uid", "displayName", "createdAt", "updatedAt"]
+    },
+    "Quiz": {
+      "title": "Quiz",
+      "description": "A user-created quiz with cover, timer, shuffle option, and multiple-choice questions.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Title of the quiz shown below its cover in the home menu.",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional summary or instructions for participants.",
+          "maxLength": 500
+        },
+        "coverImage": {
+          "type": "string",
+          "description": "Cover image path, HTTPS URL, or compressed data URL (<= 260KB).",
+          "maxLength": 260000
+        },
+        "timeLimitMinutes": {
+          "type": "integer",
+          "description": "Time limit in minutes (0 means unlimited, max 180)."
+        },
+        "shuffleQuestions": {
+          "type": "boolean",
+          "description": "Whether question order is randomized for participants."
+        },
+        "questions": {
+          "type": "array",
+          "description": "Bounded array of 1 to 50 multiple-choice questions."
+        },
+        "questionCount": {
+          "type": "integer",
+          "description": "Total number of questions in the quiz (1 to 50)."
+        },
+        "authorId": {
+          "type": "string",
+          "description": "Immutable Firebase Auth UID of the quiz creator.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Creator display name.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last update timestamp."
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "coverImage",
+        "timeLimitMinutes",
+        "shuffleQuestions",
+        "questions",
+        "questionCount",
+        "authorId",
+        "authorName",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Private creator profile document isolated to its owner."
+    },
+    "/quizzes/{quizId}": {
+      "schema": {
+        "$ref": "#/entities/Quiz"
+      },
+      "description": "Quizzes created by signed-in Google users. Single documents are readable via direct link without login; listing and mutations are restricted to the owner."
+    }
+  }
+}

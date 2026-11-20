@@ -1,0 +1,190 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Hardened Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidOption(opt) {
+      return opt is string && opt.size() >= 1 && opt.size() <= 240;
+    }
+
+    // --- UserProfile Validation ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 100
+        && (!data.keys().hasAny(['photoURL']) || (data.photoURL is string && data.photoURL.size() <= 1000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Quiz Validation ---
+    function isValidQuestionMap(q) {
+      return q is map
+        && q.keys().hasAll(['id', 'title', 'options', 'correctIndex'])
+        && q.keys().hasOnly(['id', 'title', 'options', 'correctIndex', 'explanation'])
+        && q.id is string
+        && q.id.size() >= 1
+        && q.id.size() <= 64
+        && q.title is string
+        && q.title.size() >= 1
+        && q.title.size() <= 400
+        && q.options is list
+        && q.options.size() >= 2
+        && q.options.size() <= 6
+        && isValidOption(q.options[0])
+        && isValidOption(q.options[1])
+        && (q.options.size() <= 2 || isValidOption(q.options[2]))
+        && (q.options.size() <= 3 || isValidOption(q.options[3]))
+        && (q.options.size() <= 4 || isValidOption(q.options[4]))
+        && (q.options.size() <= 5 || isValidOption(q.options[5]))
+        && q.correctIndex is int
+        && q.correctIndex >= 0
+        && q.correctIndex < q.options.size()
+        && (!q.keys().hasAny(['explanation']) || (q.explanation is string && q.explanation.size() <= 500));
+    }
+
+    function isValidQuiz(data) {
+      return data.keys().hasAll([
+          'title',
+          'description',
+          'coverImage',
+          'timeLimitMinutes',
+          'shuffleQuestions',
+          'questions',
+          'questionCount',
+          'authorId',
+          'authorName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'title',
+          'description',
+          'coverImage',
+          'timeLimitMinutes',
+          'shuffleQuestions',
+          'questions',
+          'questionCount',
+          'authorId',
+          'authorName',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 140
+        && data.description is string
+        && data.description.size() <= 500
+        && data.coverImage is string
+        && data.coverImage.size() <= 260000
+        && data.timeLimitMinutes is int
+        && data.timeLimitMinutes >= 0
+        && data.timeLimitMinutes <= 180
+        && data.shuffleQuestions is bool
+        && data.questions is list
+        && data.questions.size() >= 1
+        && data.questions.size() <= 50
+        && isValidQuestionMap(data.questions[0])
+        && data.questionCount is int
+        && data.questionCount == data.questions.size()
+        && isValidId(data.authorId)
+        && data.authorId == request.auth.uid
+        && data.authorName is string
+        && data.authorName.size() >= 1
+        && data.authorName.size() <= 100
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection: /users/{userId} ---
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // --- Collection: /quizzes/{quizId} ---
+    match /quizzes/{quizId} {
+      // Direct link viewing without login
+      allow get: if isValidId(quizId);
+
+      // Listing restricted strictly to owner's own quizzes
+      allow list: if isSignedIn() && existing().authorId == request.auth.uid;
+
+      // Creation restricted to verified Google users
+      allow create: if isVerifiedUser()
+        && isValidId(quizId)
+        && isValidQuiz(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      // Updates restricted to owner and mutable quiz fields
+      allow update: if isVerifiedUser()
+        && isValidId(quizId)
+        && isValidQuiz(incoming())
+        && existing().authorId == request.auth.uid
+        && incoming().authorId == existing().authorId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title',
+          'description',
+          'coverImage',
+          'timeLimitMinutes',
+          'shuffleQuestions',
+          'questions',
+          'questionCount',
+          'authorName',
+          'aiProvider',
+          'updatedAt'
+        ]);
+
+      // Deletion restricted to owner
+      allow delete: if isVerifiedUser()
+        && isValidId(quizId)
+        && existing().authorId == request.auth.uid;
+    }
+  }
+}

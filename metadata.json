@@ -1,0 +1,6 @@
+{
+  "name": "PrismaQuiz",
+  "description": "Crie, personalize, compartilhe por link e exporte quizzes em PDF com capa, tempo limite e embaralhamento de perguntas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
